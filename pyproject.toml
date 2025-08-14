@@ -1,0 +1,20 @@
+[project]
+name = "gpoParser"
+version = "1.0.0"
+description = "Tool designed to extract and analyze configurations applied through Group Policy Objects (GPOs) in an Active Directory environment"
+requires-python = ">=3.9"
+
+dependencies = [
+    "ldap3-bleeding-edge==2.10.1.1337",
+    "chardet",
+    "impacket",
+    "ijson",
+    "neo4j"
+]
+
+[project.scripts]
+gpoParser = "gpoParser:main"
+
+[tool.pip]
+upgrade-strategy = "eager"
+
