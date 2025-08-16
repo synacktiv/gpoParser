@@ -18,3 +18,5 @@ gpoParser = "gpoParser:main"
 [tool.pip]
 upgrade-strategy = "eager"
 
+[tool.poetry]
+packages = [{ include = "gpoParser" }]
