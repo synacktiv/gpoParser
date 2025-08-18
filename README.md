@@ -6,6 +6,8 @@ It was presented at [leHack 2025](https://lehack.org/fr/2025/tracks/conferences/
 
 # Install
 
+Note: dependency needed for `gssapi` package: `libkrb5-dev`, install via `sudo apt install libkrb5-dev` (or via your relevant package manager)
+
 ```
 pipx install git+https://github.com/synacktiv/gpoParser
 ```
