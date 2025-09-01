@@ -1,3 +1,4 @@
+import os
 from gpoParser.core.utils import stream_items
 from gpoParser.core.ldap import LDAP
 
