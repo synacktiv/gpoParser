@@ -16,17 +16,18 @@ pipx install git+https://github.com/synacktiv/gpoParser
 
 ```
 $ gpoParser -h
-usage: gpoParser [-h] {local,remote,enrich,query} ...
+usage: gpoParser [-h] {local,remote,display,query,enrich} ...
 
 GPO Analysis Tool
 
 positional arguments:
-  {local,remote,enrich,query}
-                        Choose local, remote or enrich mode
+  {local,remote,display,query,enrich}
+                        Choose mode
     local               Parse GPOs locally
     remote              Parse GPOs via remote LDAP/SYSVOL
-    enrich              Enrich BloodHound with new edges
+    display             Display parsed GPO contents
     query               Query GPO parser results in order to display affected computers
+    enrich              Enrich BloodHound with new edges
 
 options:
   -h, --help            show this help message and exit
@@ -38,7 +39,7 @@ options:
 
 ```
 $ gpoParser remote -h
-usage: gpoParser remote [-h] [-s SERVER] [-d DOMAIN] [-u USER] [-p PASSWORD] [-H HASH] [-k] [-t TARGET] [-of {pretty}] [-o OUTPUT] [-c CACHE] [-dr]
+usage: gpoParser remote [-h] [-s SERVER] [-d DOMAIN] [-u USER] [-p PASSWORD] [-H HASH] [-k] [-o OUTPUT]
 
 options:
   -h, --help            show this help message and exit
@@ -51,23 +52,25 @@ options:
                         Password
   -H HASH, --hash HASH  NTLM authentication, format is [LM:]NT
   -k, --kerberos        Use Kerberos authentication
-  -t TARGET, --target TARGET
-                        Filter target computer or OU by name
-  -of {pretty}, --output-format {pretty}
-                        Output format
   -o OUTPUT, --output OUTPUT
-                        Output filename and location (default ./gpoParser_<timestamp>.out)
-  -c CACHE, --cache CACHE
-                        Cache file location (default current folder)
-  -dr, --dry-run        Ignore cache file
+                        Output filename and location (default ./cache_gpoParser_<timestamp>.json)
+
+$ gpoParser remote -u bob -p password -d corp -s 192.168.57.5
+Retrieving \CORP.LOCAL\Policies\{008B0634-C0B9-443A-A06A-E2BAD875E27F}\Machine/Microsoft/Windows NT/SecEdit/GptTmpl.inf
+Retrieving \CORP.LOCAL\Policies\{008B0634-C0B9-443A-A06A-E2BAD875E27F}\Machine/Preferences/Groups/Groups.xml
+Retrieving \CORP.LOCAL\Policies\{008B0634-C0B9-443A-A06A-E2BAD875E27F}\Machine/Preferences/Registry/Registry.xml
+[...]
+Information saved to cache, now use display / query features
 ```
 
-**Offline**: Requires a (partial) copy of the LDAP directory and the content of the Policies folder from the SYSVOL share. Currently, LDAP directory collection relies on the [ldeep](https://github.com/franc-pentest/ldeep) tool. Additional collectors will be added over time.
-It is also possible to filter results to obtain only the GPOs applying to a specific machine.
+**Offline**: Requires a (partial) copy of the LDAP directory and the content of the Policies folder from the SYSVOL share. Currently, LDAP directory collection relies on:
+
+  - [ldeep](https://github.com/franc-pentest/ldeep)
+  - [ADExplorerSnapshot](https://github.com/c3c/ADExplorerSnapshot) `Objects` output format (NDJSON)
 
 ```
 $ gpoParser local -h
-usage: gpoParser local [-h] [-f {ldeep,bloodhound-legacy,bloodhound}] [-of {pretty,json}] [-t TARGET] [-o OUTPUT] [-c CACHE] [-dr] [sysvol_folder] [ldap_folder]
+usage: gpoParser local [-h] [-f {ldeep,adexplorer}] [-o OUTPUT] sysvol_folder ldap_folder
 
 positional arguments:
   sysvol_folder         SYSVOL folder containing the policies
@@ -75,17 +78,109 @@ positional arguments:
 
 options:
   -h, --help            show this help message and exit
-  -f {ldeep,bloodhound-legacy,bloodhound}, --format {ldeep,bloodhound-legacy,bloodhound}
+  -f {ldeep,adexplorer}, --format {ldeep,adexplorer}
                         JSON files input format (default ldeep)
-  -of {pretty,json}, --output-format {pretty,json}
-                        Output format
-  -t TARGET, --target TARGET
-                        Filter target computer by name
   -o OUTPUT, --output OUTPUT
-                        Output filename and location (default ./gpoParser_<timestamp>.out)
+                        Output filename and location (default ./cache_gpoParser_<timestamp>.json)
+
+$ mkdir sysvol && cd sysvol &&  echo -e 'prompt\nrecurse\nmget *' | smbclient -W CORP -U bob%password //192.168.57.5/SYSVOL
+
+$ mkdir ldap && ldeep ldap -u bob -p password -d corp.local -s 192.168.57.5 all ldap/corp
+
+$ gpoParser local sysvol/ ldap/
+Information saved to cache, now use display / query features
+```
+
+## Display
+
+This mode displays all configuration changes applied by GPOs, limited to supported formats and parsed data. You can filter the results by GPO name or GUID.
+
+```
+$ gpoParser display -h
+usage: gpoParser display [-h] [-g GPO] [-c CACHE]
+
+options:
+  -h, --help            show this help message and exit
+  -g GPO, --gpo GPO     Filter by GPO name or GUID
   -c CACHE, --cache CACHE
-                        Cache file location (default current folder)
-  -dr, --dry-run        Ignore cache file
+                        Cache file location (default: ./cache_gpoParser_<timestamp>.json)
+
+$ gpoParser display
+Cache file found, using it
+{6F3821B3-89B2-496D-82A5-58092D3EA588}: AddAdmin
+Computer configuration
+   Groups
+      The following principals are added to BUILTIN\Administrators
+         CORP\admin
+{ADC96BD4-86D3-4516-BCF2-F7BDD5A76366}: AddRDP
+Computer configuration
+   Groups
+      The following principals are added to BUILTIN\Remote Desktop Users
+         CORP\bob
+[...]
+
+$ gpoParser display -g work
+Cache file found, using it
+{474D47E2-2B77-4E37-9744-A3CF6AB04449}: Workstation admins
+Computer configuration
+   Groups
+      The following principals are added to BUILTIN\Administrators
+         CORP\Admin - All Workstations
+```
+
+## Query
+
+This view shows the relationships between GPOs and computers. For example, you can see which computers a GPO applies to or what changes are applied to one or more computers.
+```
+$ gpoParser query -h
+usage: gpoParser query [-h] [-g GPO] [-C COMPUTER] [-c CACHE]
+
+options:
+  -h, --help            show this help message and exit
+  -g GPO, --gpo GPO     Filter by GPO name or GUID
+  -C COMPUTER, --computer COMPUTER
+                        Computer name or distinguishedName to filter on
+  -c CACHE, --cache CACHE
+                        Cache file location (default: ./cache_gpoParser_<timestamp>.json)
+
+$ gpoParser query
+Cache file found, using it
+{6F3821B3-89B2-496D-82A5-58092D3EA588}: AddAdmin
+This GPO affects the following computers:
+CN=SRV55,OU=PROD,OU=Servers,DC=CORP,DC=LOCAL
+CN=SRV54,OU=PROD,OU=Servers,DC=CORP,DC=LOCAL
+CN=SRV53,OU=PROD,OU=Servers,DC=CORP,DC=LOCAL
+CN=SRV52,OU=PROD,OU=Servers,DC=CORP,DC=LOCAL
+
+{6AC1786C-016F-11D2-945F-00C04FB984F9}: Default Domain Controllers Policy
+This GPO affects the following computers:
+CN=DC01,OU=Domain Controllers,DC=CORP,DC=LOCAL
+
+{31B2F340-016D-11D2-945F-00C04FB984F9}: Default Domain Policy
+This GPO affects the following computers:
+CN=SRV51,OU=SUBSUB,OU=SUB,DC=CORP,DC=LOCAL
+CN=SRV49,OU=SUB,DC=CORP,DC=LOCAL
+CN=SRV50,OU=SUB,DC=CORP,DC=LOCAL
+CN=SRV55,OU=PROD,OU=Servers,DC=CORP,DC=LOCAL
+[...]
+
+
+$ gpoParser query -C wks
+Cache file found, using it
+CN=WKS01,OU=ADMIN,OU=WORKSTATIONS,DC=CORP,DC=LOCAL
+{31B2F340-016D-11D2-945F-00C04FB984F9}: Default Domain Policy
+Computer configuration
+   Registry
+      The following registry key changes have been made
+      Action: Create
+      Path: MACHINE\System\CurrentControlSet\Control\Lsa\NoLMHash
+      Value: 4,1
+      The following registry key changes have been made
+      Action: Update
+      Hive: HKEY_LOCAL_MACHINE
+      Path: SYSTEM\CurrentControlSet\Services\Dnscache\Parameters
+      Name: EnableMDNS
+      Value: 00000000
 ```
 
 ## BloodHound enrichment
@@ -104,29 +199,11 @@ options:
   -s SERVER, --server SERVER
                         Neo4j server URI (default: bolt://localhost:7687)
   -c CACHE, --cache CACHE
-                        Cache file location (default current folder)
+                        Cache file location (default: ./cache_gpoParser_<timestamp>.json)
 ```
-
-## Query mode
-
-Enables identification of the machines where a given GPO applies. Filtering is also possible by GPO name or GUID.
-
-```
-$ gpoParser query -h
-usage: gpoParser query [-h] [-n NAME] [-g GUID] [-c CACHE]
-
-options:
-  -h, --help            show this help message and exit
-  -n NAME, --name NAME  GPO name to filter on
-  -g GUID, --guid GUID  GPO GUID to filter on
-  -c CACHE, --cache CACHE
-                        Cache file location (default current folder)
-```
-
 
 ## Limitations
 
 Offline data ingestion introduces certain limitations: parameters such as inheritance status, user/computer configuration status, security filters, WMI filters, and item-level targeting may not always be collected or interpreted by existing tools (BloodHound, PowerView, GPOHound).
 **gpoParser** will progressively take all these parameters into account as its development continues.
 Additional data collectors will be introduced as the tooling evolves.
-

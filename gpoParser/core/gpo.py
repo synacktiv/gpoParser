@@ -1,6 +1,7 @@
-from gpoParser.core.ldap import LDAP
-import os, glob
 import ijson
+import os, glob
+from gpoParser.core.ldap import LDAP
+from gpoParser.core.utils import stream_items
 
 
 class GPO:
@@ -63,6 +64,17 @@ def load_local(ldap_folder, data_format):
             gpo.name = entry.get("displayName", "")
             gpo.flags = entry.get("flags", 0)
             gpo_objects.append(gpo)
+
+    elif data_format == "adexplorer":
+        for entry in stream_items(path=ldap_folder, suffix="objects.ndjson"):
+            if "objectClass" in entry.keys():
+                if "groupPolicyContainer" in entry.get("objectClass", []):
+                    if "Deleted Objects" not in entry.get("distinguishedName")[0]:
+                        gpo = GPO(entry.get("cn", "")[0].upper())
+                        gpo.name = entry.get("displayName", "")[0]
+                        gpo.flags = entry.get("flags", 0)[0]
+                        gpo_objects.append(gpo)
+
     return gpo_objects
 
 def load_remote(args):
@@ -124,14 +136,3 @@ def load_remote(args):
         gpo.flags = entry.get("flags", 0)
         gpo_objects.append(gpo)
     return gpo_objects
-
-def stream_items(path, suffix):
-    try:
-        full_path = os.path.join(path, f"*{suffix}")
-        file = glob.glob(full_path)[0]
-        with open(file, 'rb') as f:
-            for obj in ijson.items(f, 'item'):
-                yield obj
-    except:
-        print(f"Can't find {path}*{suffix} file")
-        exit()

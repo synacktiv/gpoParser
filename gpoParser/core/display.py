@@ -1,6 +1,5 @@
-from gpoParser.core.computer import load_computers
 from gpoParser.core.processor import get_parent_dn
-from gpoParser.core.resolver import resolv_sid, build_sid_cache_remotely, build_sid_cache_locally
+from gpoParser.core.resolver import resolv_sid, build_sid_cache
 import json
 
 def format_group(args, gpo, sid_cache):
@@ -213,62 +212,20 @@ def format_registry(args, gpo, sid_cache):
     lines = "\n".join(lines) + "\n"
     return lines if lines != "\n" else ""
 
-def display_gpos(args, ou_objects, gpo_objects, sid_cache=None, dn_cache=None):
+def display_gpos(args, gpo_objects, sid_cache, target=None, gpo_guids=None):
     """
     Display GPO application data.
+
+    Arguments:
+        @target:string
+            a computer name or DN
+        @gpo_guids: list
+            list of gpos GUIDs
     """
-    if not sid_cache:
-        # build the SID cache
-        if args.mode == "remote":
-            sid_cache = build_sid_cache_remotely(args)
-        else:
-            sid_cache = build_sid_cache_locally(args)
-
-    if args.target is not None:
-        found = False
-        # filter on a specific computer
-        if not dn_cache:
-            # retrieve computers dns
-            computer_dns = load_computers(args)
-            # find parent OU to this computer
-            for computer in computer_dns:
-                if args.target.upper() in computer.upper():
-                    found = True
-                    parent_ou = get_parent_dn(computer)
-                    break
-        else:
-            for container,items in dn_cache.items():
-                for item in items:
-                    if args.target.upper() in item.upper():
-                        found = True
-                        parent_ou = container.upper()
-                        break
-
-        # display GPOs
-        if not found:
-            print(f"Can't find computer {args.target} or his parent container")
-        else:
-            effective_gpos_guids = []
-            for ou in ou_objects:
-                if ou.dn.upper() == parent_ou.upper():
-                    effective_gpos_guids = [guid for guid,_ in ou.effective_gpos_guids]
-            for gpo in gpo_objects:
-                if gpo.guid in effective_gpos_guids:
-                    if args.output_format == "pretty":
-                        # user friendly output
-                        if has_nested_values(gpo.content):
-                            print(f"{gpo.guid}: {gpo.name}")
-                            group_output = format_group(args, gpo, sid_cache)
-                            privilege_output = format_privilege(args, gpo, sid_cache)
-                            registry_output = format_registry(args, gpo, sid_cache)
-                            output = group_output + privilege_output + registry_output
-                            print(output)
-
-    else:
-        # display all GPOs
+    if target is not None:
+        print(f"{target}")
         for gpo in gpo_objects:
-            if args.output_format == "pretty":
-                # user friendly output
+            if gpo.guid in gpo_guids:
                 if has_nested_values(gpo.content):
                     print(f"{gpo.guid}: {gpo.name}")
                     group_output = format_group(args, gpo, sid_cache)
@@ -277,12 +234,35 @@ def display_gpos(args, ou_objects, gpo_objects, sid_cache=None, dn_cache=None):
                     output = group_output + privilege_output + registry_output
                     print(output)
 
-            else:
-                # json output, TODO
-                print("Not implemented yet :(")
-                print("Maybe cache file can help")
+    else:
+        if args.gpo:
+            # display only gpo with the filter
+            found = False
+            for gpo in gpo_objects:
+                if args.gpo.upper() in gpo.name.upper() or args.gpo.upper() in gpo.guid.upper():
+                    found = True
+                    if has_nested_values(gpo.content):
+                        print(f"{gpo.guid}: {gpo.name}")
+                        group_output = format_group(args, gpo, sid_cache)
+                        privilege_output = format_privilege(args, gpo, sid_cache)
+                        registry_output = format_registry(args, gpo, sid_cache)
+                        output = group_output + privilege_output + registry_output
+                        print(output)
 
-def display_affected_computers(args, ou_objects, gpo_objects, sid_cache, dn_cache):
+            if not found:
+                print(f"Not GPO name or GUID matching {args.gpo}")
+        else:
+            # display all GPOs
+            for gpo in gpo_objects:
+                if has_nested_values(gpo.content):
+                    print(f"{gpo.guid}: {gpo.name}")
+                    group_output = format_group(args, gpo, sid_cache)
+                    privilege_output = format_privilege(args, gpo, sid_cache)
+                    registry_output = format_registry(args, gpo, sid_cache)
+                    output = group_output + privilege_output + registry_output
+                    print(output)
+
+def display_computers_affected_by_gpo(args, ou_objects, gpo_objects, dn_cache):
     for gpo in gpo_objects:
         affected_ous = []
         for ou in ou_objects:
@@ -298,8 +278,8 @@ def display_affected_computers(args, ou_objects, gpo_objects, sid_cache, dn_cach
 
         flat_affected_computers = [item for sublist in affected_computers for item in sublist]
         if flat_affected_computers:
-            if args.name or args.guid:
-                if gpo.name == args.name or args.guid is not None and args.guid.upper() in gpo.guid.upper():
+            if args.gpo:
+                if args.gpo.upper() in gpo.name.upper() or args.gpo.upper() in gpo.guid.upper():
                     print(f"{gpo.guid}: {gpo.name}")
                     print("This GPO affects the following computers:")
                     print("\n".join(flat_affected_computers))
@@ -309,6 +289,25 @@ def display_affected_computers(args, ou_objects, gpo_objects, sid_cache, dn_cach
                 print("This GPO affects the following computers:")
                 print("\n".join(flat_affected_computers))
                 print()
+
+def display_gpos_affecting_computer(args, ou_objects, gpo_objects, sid_cache, dn_cache):
+    target_computer = args.computer.upper()
+    matched = []
+    for ou_dn, computers in dn_cache.items():
+        for computer_dn in computers:
+            if target_computer in computer_dn:
+                matched.append((computer_dn, ou_dn))
+    if not matched:
+        print(f"No computer matching '{args.computer}' found")
+        return
+
+    ou_by_dn = {ou.dn.upper(): ou for ou in ou_objects}
+    gpo_by_guid = {gpo.guid.upper(): gpo for gpo in gpo_objects}
+
+    for computer_dn, ou_dn in matched:
+        ou = ou_by_dn.get(ou_dn.upper())
+        effective_guids = [guid for guid, _ in ou.effective_gpos_guids]
+        display_gpos(args, gpo_objects, sid_cache, computer_dn, effective_guids)
 
 def has_nested_values(d):
     if isinstance(d, dict):

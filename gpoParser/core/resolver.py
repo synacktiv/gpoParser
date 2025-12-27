@@ -65,6 +65,13 @@ def resolv_sid(args, sid, sid_cache):
                 sid = f"{sid_cache[sid]}"
     return sid
 
+def build_sid_cache(args):
+    if args.mode == "remote":
+        sid_cache = build_sid_cache_remotely(args)
+    else:
+        sid_cache = build_sid_cache_locally(args)
+    return sid_cache
+
 def build_sid_cache_remotely(args):
     # init LDAP connection
     lm_hash = ""
@@ -117,17 +124,30 @@ def build_sid_cache_remotely(args):
 
 def build_sid_cache_locally(args):
     sid_map = {}
-    suffixes = [
-        "_users.json",
-        "_gmsa.json",
-        "_groups.json",
-        "_machines.json"
-        ]
+    sid = ""
+    name = ""
+    if args.format == "ldeep":
+        suffixes = [
+            "_users_all.json",
+            "_gmsa.json",
+            "_groups.json",
+            "_machines.json"
+            ]
 
-    for suffix in suffixes:
-        for obj in stream_items(args.ldap_folder, suffix):
-            sid = obj.get("objectSid")
-            name = obj.get("sAMAccountName")
+        for suffix in suffixes:
+            for obj in stream_items(args.ldap_folder, suffix):
+                sid = obj.get("objectSid")
+                name = obj.get("sAMAccountName")
+                if sid and name:
+                    sid_map[sid] = name
+
+    elif args.format == "adexplorer":
+        for obj in stream_items(args.ldap_folder, "objects.ndjson"):
+            if "objectSid" in obj.keys():
+                sid = obj.get("objectSid")[0]
+            if "sAMAccountName" in obj.keys():
+                name = obj.get("sAMAccountName")[0]
             if sid and name:
                 sid_map[sid] = name
+
     return sid_map

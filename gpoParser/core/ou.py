@@ -1,6 +1,7 @@
 import os, glob
 import ijson
 from gpoParser.core.ldap import LDAP
+from gpoParser.core.utils import stream_items
 
 
 class OU:
@@ -39,6 +40,23 @@ def load_local(ldap_folder, data_format):
             ou.block_inheritance = True if entry.get("gPOptions") == 1 else False
             ou.gplink = entry.get("gPLink", "")
             ou_objects.append(ou)
+
+    elif data_format == "adexplorer":
+        for entry in stream_items(path=ldap_folder, suffix="objects.ndjson"):
+            if "objectClass" in entry.keys():
+                if any(obj in entry.get("objectClass", []) for obj in ("organizationalUnit", "domain")):
+                    if "Deleted Objects" not in entry.get("distinguishedName")[0]:
+                        ou_dn = entry.get("distinguishedName")[0].upper()
+                        ou = OU(ou_dn)
+                        if "gPOptions" in entry.keys():
+                            ou.block_inheritance = True if entry.get("gPOptions")[0] == 1 else False
+                        else:
+                            ou.block_inheritance = False
+                        if "gPLink" in entry.keys():
+                            ou.gplink = entry.get("gPLink", "")[0]
+                        else:
+                            ou.gplink = ""
+                        ou_objects.append(ou)
 
     return ou_objects
 
@@ -102,14 +120,3 @@ def load_remote(args):
         ou.gplink = entry.get("gPLink", "")
         ou_objects.append(ou)
     return ou_objects
-
-def stream_items(path, suffix):
-    try:
-        full_path = os.path.join(path, f"*{suffix}")
-        file = glob.glob(full_path)[0]
-        with open(file, 'rb') as f:
-            for obj in ijson.items(f, 'item'):
-                yield obj
-    except:
-        print(f"Can't find {path}*{suffix} file")
-        exit()

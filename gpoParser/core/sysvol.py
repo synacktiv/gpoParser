@@ -69,6 +69,11 @@ class SMB:
                 conn.login(self.username, self.password)
         return conn
 
+def retrieve_sysvol_content(args, gpo_objects):
+    if args.mode == "remote":
+        retrieve_sysvol_content_remote(args, gpo_objects)
+    else:
+        retrieve_sysvol_content_local(args.sysvol_folder, gpo_objects)
 
 def retrieve_sysvol_content_local(sysvol_folder, gpo_objects):
     sysvol_path = Path(sysvol_folder).resolve()

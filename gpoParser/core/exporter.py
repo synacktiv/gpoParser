@@ -1,4 +1,4 @@
-from gpoParser.core.resolver import build_sid_cache_remotely, build_sid_cache_locally
+from gpoParser.core.resolver import build_sid_cache
 from gpoParser.core.utils import build_dn_cache_locally, build_dn_cache_remotely
 from gpoParser.core.ou import OU
 from gpoParser.core.gpo import GPO
@@ -23,11 +23,7 @@ def save_cache(args, ou_objects, gpo_objects):
                 ou[key] = list(ou[key])
 
     # create SID mapping with sAMAccountName
-    if args.mode == "remote":
-        sid_cache = build_sid_cache_remotely(args)
-    elif args.mode == "local":
-        sid_cache = build_sid_cache_locally(args)
-    data["sid_cache"] = sid_cache
+    data["sid_cache"] = build_sid_cache(args)
 
     # cache OUs and associated computers
     if args.mode == "remote":
@@ -37,7 +33,7 @@ def save_cache(args, ou_objects, gpo_objects):
     data["dn_cache"] = dn_cache
 
     try:
-        with open(f"{args.cache}/cache_gpoParser_{int(time.time())}.json", "w") as f:
+        with open(args.output, "w") as f:
             json.dump(data, f, indent=4, default=default_serializer)
     except Exception as e:
         print(f"Failed to save cache: {e}")
@@ -48,10 +44,12 @@ def load_cache(args):
     gpo_objects = []
     sid_cache = {}
     dn_cache = {}
-    pattern = os.path.join(args.cache, "cache_gpoParser_*.json")
+    pattern = os.path.join(args.cache)
     matching_files = glob.glob(pattern)
     if matching_files:
         is_cached = True
+        if len(matching_files) > 1:
+            print("Detecting multiples cache files, taking the latest")
         latest_file = max(matching_files, key=os.path.getmtime)
         with open(latest_file) as f:
             data = json.load(f)
@@ -61,9 +59,6 @@ def load_cache(args):
         dn_cache = data.get("dn_cache", {})
 
     return is_cached, ou_objects, gpo_objects, sid_cache, dn_cache
-
-def save_output(args, full_output):
-    return
 
 def default_serializer(o):
     if isinstance(o, set):

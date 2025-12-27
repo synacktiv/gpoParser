@@ -7,29 +7,54 @@ def stream_items(path, suffix):
     try:
         full_path = os.path.join(path, f"*{suffix}")
         file = glob.glob(full_path)[0]
+    except IndexError:
+            print(f"Can't find {path}*{suffix} file")
+            exit()
+
+    # classic JSON format
+    try:
         with open(file, 'rb') as f:
             for obj in ijson.items(f, 'item'):
                 yield obj
-    except:
-        # file not found
+        return
+    except Exception:
         pass
+
+    # NDJSON format
+    try:
+        with open(file, 'rb') as f:
+            for obj in ijson.items(f, '', multiple_values=True):
+                yield obj
+    except Exception:
+        print(f"File {file} is neither valid JSON nor NDJSON")
+        exit()
 
 def build_dn_cache_locally(args, ou_objects):
     dn_map = {}
-
-    suffixes = [
-        "_machines.json",
-        ]
-
     for ou in ou_objects:
         dn_map[ou.dn] = []
 
-    for suffix in suffixes:
-        for obj in stream_items(args.ldap_folder, suffix):
-            parent = get_parent_dn(obj.get("distinguishedName"))
-            if parent:
-                if parent.upper() in dn_map.keys():
-                    dn_map[parent.upper()].append(obj.get("distinguishedName"))
+    if args.format == "ldeep":
+        suffixes = [
+            "_machines.json",
+            ]
+
+        for suffix in suffixes:
+            for obj in stream_items(args.ldap_folder, suffix):
+                parent = get_parent_dn(obj.get("distinguishedName"))
+                if parent:
+                    if parent.upper() in dn_map.keys():
+                        dn_map[parent.upper()].append(obj.get("distinguishedName"))
+
+    elif args.format == "adexplorer":
+        for obj in stream_items(args.ldap_folder, "objects.ndjson"):
+            if "objectClass" in obj.keys():
+                if "computer" in obj.get("objectClass"):
+                    parent = get_parent_dn(obj.get("distinguishedName")[0])
+                    if parent:
+                        if parent.upper() in dn_map.keys():
+                            dn_map[parent.upper()].append(obj.get("distinguishedName")[0])
+
     return dn_map
 
 

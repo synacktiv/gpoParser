@@ -116,6 +116,7 @@ def create_rdp_edges(bh_connector, source_principal, target_principal):
         'CREATE (a)-[:CanRDP]->(b)\n'
         'RETURN a, b'
     ).format(source, target)
+    print(cypher_query)
     bh_connector.run_query(cypher_query)
 
 def create_winrm_edges(bh_connector, source_principal, target_principal):
