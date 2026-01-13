@@ -26,8 +26,8 @@ def main():
 
     # Remote parsing
     parser_remote = subparsers.add_parser("remote", help="Parse GPOs via remote LDAP/SYSVOL")
-    parser_remote.add_argument("-s", "--server", help="LDAP server IP or FQDN")
-    parser_remote.add_argument("-d", "--domain", help="Domain name")
+    parser_remote.add_argument("-s", "--server", help="LDAP server IP or FQDN (ex: ldap://192.168.57.5 or ldaps://dc.corp.local)")
+    parser_remote.add_argument("-d", "--domain", help="Domain name tied to the user")
     parser_remote.add_argument("-u", "--user", help="Username")
     parser_remote.add_argument("-p", "--password", help="Password")
     parser_remote.add_argument("-H", "--hash", help="NTLM authentication, format is [LM:]NT")
