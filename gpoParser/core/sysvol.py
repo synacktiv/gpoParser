@@ -64,9 +64,9 @@ class SMB:
                 sys.exit(1)
         else:
             if not self.password:
-                conn.login(self.username, self.password, nthash=self.nt_hash)
+                conn.login(self.username, self.password, domain=self.domain, nthash=self.nt_hash)
             else:
-                conn.login(self.username, self.password)
+                conn.login(self.username, self.password, domain=self.domain)
         return conn
 
 def retrieve_sysvol_content(args, gpo_objects):

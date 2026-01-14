@@ -43,17 +43,14 @@ usage: gpoParser remote [-h] [-s SERVER] [-d DOMAIN] [-u USER] [-p PASSWORD] [-H
 
 options:
   -h, --help            show this help message and exit
-  -s SERVER, --server SERVER
-                        LDAP server IP or FQDN
-  -d DOMAIN, --domain DOMAIN
-                        Domain name
-  -u USER, --user USER  Username
-  -p PASSWORD, --password PASSWORD
+  -s, --server SERVER   LDAP server IP or FQDN (ex: ldap://192.168.57.5 or ldaps://dc.corp.local)
+  -d, --domain DOMAIN   Domain name tied to the user
+  -u, --user USER       Username
+  -p, --password PASSWORD
                         Password
-  -H HASH, --hash HASH  NTLM authentication, format is [LM:]NT
+  -H, --hash HASH       NTLM authentication, format is [LM:]NT
   -k, --kerberos        Use Kerberos authentication
-  -o OUTPUT, --output OUTPUT
-                        Output filename and location (default ./cache_gpoParser_<timestamp>.json)
+  -o, --output OUTPUT   Output filename and location (default ./cache_gpoParser_<timestamp>.json)
 
 $ gpoParser remote -u bob -p password -d corp -s 192.168.57.5
 Retrieving \CORP.LOCAL\Policies\{008B0634-C0B9-443A-A06A-E2BAD875E27F}\Machine/Microsoft/Windows NT/SecEdit/GptTmpl.inf
