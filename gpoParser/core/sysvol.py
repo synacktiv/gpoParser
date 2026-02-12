@@ -182,7 +182,7 @@ def parse_gpttmpl(gpo_objects):
                 def optionxform(self, option):
                     return option
 
-            config = CaseSensitiveConfigParser(allow_no_value=True, strict=False)
+            config = CaseSensitiveConfigParser(allow_no_value=True, strict=False, interpolation=None)
             config.read_string(gpo.raw_gpttmpl)
             # groups information
             if "Group Membership" in config.sections():
