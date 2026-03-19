@@ -183,7 +183,7 @@ def parse_gpttmpl(gpo_objects):
                     return option
 
             config = CaseSensitiveConfigParser(allow_no_value=True, strict=False, interpolation=None)
-            config.read_string(gpo.raw_gpttmpl)
+            config.read_string(gpo.raw_gpttmpl.lstrip('\ufeff'))
             # groups information
             if "Group Membership" in config.sections():
                 for item in config.items("Group Membership"):
