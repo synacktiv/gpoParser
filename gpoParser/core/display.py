@@ -295,7 +295,7 @@ def display_gpos_affecting_computer(args, ou_objects, gpo_objects, sid_cache, dn
     matched = []
     for ou_dn, computers in dn_cache.items():
         for computer_dn in computers:
-            if target_computer in computer_dn:
+            if target_computer in computer_dn.upper():
                 matched.append((computer_dn, ou_dn))
     if not matched:
         print(f"No computer matching '{args.computer}' found")
