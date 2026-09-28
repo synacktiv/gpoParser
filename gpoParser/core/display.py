@@ -170,6 +170,7 @@ def format_registry(args, gpo, sid_cache):
         ('path', "Path"),
         ('new_name', "New name"),
         ('name', "Name"),
+        ('type', "Type"),
         ('value', "Value")
     ]
 
@@ -185,7 +186,7 @@ def format_registry(args, gpo, sid_cache):
                     if reg.get(key) is None:
                         value = "Create"
                     else:
-                        value = action_map[reg.get('action')]
+                        value = action_map.get(reg.get('action'), reg.get('action'))
                 else:
                     value = reg.get(key)
                 if value:
@@ -203,7 +204,7 @@ def format_registry(args, gpo, sid_cache):
                     if reg.get(key) is None:
                         value = "Create"
                     else:
-                        value = action_map[reg.get('action')]
+                        value = action_map.get(reg.get('action'), reg.get('action'))
                 else:
                     value = reg.get(key)
                 if value:
