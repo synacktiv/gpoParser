@@ -53,12 +53,14 @@ class LDAP:
             server = Server(self.server, port=389, get_info=ALL)
 
         if self.kerberos:
+            server_hostname = self.server.split("://")[1] if "://" in self.server else self.server
             domain, user, TGT, TGS = CCache.parseFile(
-                self.domain, self.username, f"cifs/{self.server}"
+                self.domain, self.username, f"cifs/{server_hostname}"
             )
-            ldap_connection = Connection(
-                server, authentication=SASL, sasl_mechanism=KERBEROS
-            )
+            conn_kwargs = {"authentication": SASL, "sasl_mechanism": KERBEROS}
+            if not self.server.startswith("ldaps"):
+                conn_kwargs["session_security"] = ENCRYPT
+            ldap_connection = Connection(server, **conn_kwargs)
             if TGS:
                 # gssapi wants the target FQDN in lower case
                 self.modify_ticket("ldap")
