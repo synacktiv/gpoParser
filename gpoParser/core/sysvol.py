@@ -1,4 +1,5 @@
 from pathlib import Path
+import struct
 import sys
 import re
 import chardet
@@ -14,6 +15,11 @@ GPO_FILES = {
         "raw_computer_registry": "Machine/Preferences/Registry/Registry.xml",
         "raw_user_groups": "User/Preferences/Groups/Groups.xml",
         "raw_user_registry": "User/Preferences/Registry/Registry.xml",
+}
+
+POL_FILES = {
+    "raw_computer_registry_pol": "Machine/Registry.pol",
+    "raw_user_registry_pol": "User/Registry.pol",
 }
 
 GUID_PATTERN = re.compile(r"\{[A-F0-9\-]{36}\}", re.IGNORECASE)
@@ -110,6 +116,16 @@ def retrieve_sysvol_content_local(sysvol_folder, gpo_objects):
                 except Exception as e:
                     print(f"Error reading {file_path}: {e}")
 
+        for attr, relative_path in POL_FILES.items():
+            relative_parts = relative_path.split('/')
+            file_path = resolve_case_insensitive(gpo_dir, *relative_parts)
+            if file_path and file_path.is_file():
+                try:
+                    with open(file_path, "rb") as f:
+                        setattr(gpo, attr, f.read())
+                except Exception as e:
+                    print(f"Error reading {file_path}: {e}")
+
 def retrieve_sysvol_content_remote(args, gpo_objects):
     # create SMB connection
     if "ldap" in args.server:
@@ -167,11 +183,28 @@ def retrieve_sysvol_content_remote(args, gpo_objects):
                 # File not found
                 fh.close()
 
+        for attr, relative_path in POL_FILES.items():
+            try:
+                fh = BytesIO()
+                print(f"Retrieving \\{domain_fqdn}\\Policies\\{guid}\\{relative_path}")
+                smb.connection.getFile(
+                    "SYSVOL",
+                    f"\\{domain_fqdn}\\Policies\\{guid}\\{relative_path}",
+                    fh.write,
+                )
+                file_content = fh.getvalue()
+                if file_content:
+                    setattr(gpo, attr, file_content)
+                fh.close()
+            except:
+                fh.close()
+
 
 def parse_sysvol_content(gpo_objects):
     parse_gpttmpl(gpo_objects)
     parse_groups(gpo_objects)
     parse_registry(gpo_objects)
+    parse_registry_pol_files(gpo_objects)
 
 def parse_gpttmpl(gpo_objects):
     # parse GptTmpl.inf files
@@ -446,6 +479,102 @@ def parse_registry(gpo_objects):
                     registry["value"] = properties[0].getAttribute("value")
                     registry["changed"] = properties[0].getAttribute("value")
                     gpo.content["user"]["registry"].append(registry)
+
+def parse_registry_pol_files(gpo_objects):
+    # parse Registry.pol (PReg) binary files
+    for gpo in gpo_objects:
+        if gpo.raw_computer_registry_pol:
+            entries = parse_preg(gpo.raw_computer_registry_pol)
+            for entry in entries:
+                entry["hive"] = "HKLM"
+            gpo.content["computer"]["registry"].extend(entries)
+            gpo.raw_computer_registry_pol = ""
+        if gpo.raw_user_registry_pol:
+            entries = parse_preg(gpo.raw_user_registry_pol)
+            for entry in entries:
+                entry["hive"] = "HKCU"
+            gpo.content["user"]["registry"].extend(entries)
+            gpo.raw_user_registry_pol = ""
+
+REG_TYPE_NAMES = {
+    0: "REG_NONE",
+    1: "REG_SZ",
+    2: "REG_EXPAND_SZ",
+    3: "REG_BINARY",
+    4: "REG_DWORD",
+    5: "REG_DWORD_BIG_ENDIAN",
+    7: "REG_MULTI_SZ",
+    11: "REG_QWORD",
+}
+
+def parse_preg(data):
+    # PReg format: 4-byte signature "PReg", 4-byte version, then entries
+    # each entry: [key;valueName;type(4);size(4);data] all UTF-16LE delimited
+    entries = []
+    if len(data) < 8:
+        return entries
+
+    signature = data[:4]
+    version = struct.unpack('<I', data[4:8])[0]
+    if signature != b'PReg' or version != 1:
+        return entries
+
+    pos = 8
+    while pos < len(data) - 1:
+        # opening bracket
+        if data[pos:pos+2] != b'\x5b\x00':
+            break
+        pos += 2
+
+        key, pos = read_utf16_null(data, pos)
+        pos += 2  # ;
+        value_name, pos = read_utf16_null(data, pos)
+        pos += 2  # ;
+        reg_type = struct.unpack('<I', data[pos:pos+4])[0]
+        pos += 4
+        pos += 2  # ;
+        data_size = struct.unpack('<I', data[pos:pos+4])[0]
+        pos += 4
+        pos += 2  # ;
+        raw_value = data[pos:pos+data_size]
+        pos += data_size
+        pos += 2  # closing bracket
+
+        entries.append({
+            "path": key,
+            "name": value_name,
+            "type": REG_TYPE_NAMES.get(reg_type, f"REG_UNKNOWN({reg_type})"),
+            "value": decode_reg_data(reg_type, raw_value),
+        })
+
+    return entries
+
+def read_utf16_null(data, pos):
+    end = pos
+    while end + 1 < len(data):
+        if data[end] == 0 and data[end+1] == 0:
+            break
+        end += 2
+    return data[pos:end].decode('utf-16-le'), end + 2
+
+def decode_reg_data(reg_type, raw):
+    if not raw:
+        return ""
+    # strings
+    if reg_type in (1, 2):
+        return raw.decode('utf-16-le').rstrip('\x00')
+    # integers
+    if reg_type == 4:
+        return str(struct.unpack('<I', raw[:4])[0]) if len(raw) >= 4 else raw.hex()
+    if reg_type == 5:
+        return str(struct.unpack('>I', raw[:4])[0]) if len(raw) >= 4 else raw.hex()
+    if reg_type == 11:
+        return str(struct.unpack('<Q', raw[:8])[0]) if len(raw) >= 8 else raw.hex()
+    # multi-string
+    if reg_type == 7:
+        return raw.decode('utf-16-le').rstrip('\x00').replace('\x00', ', ')
+    # binary and everything else
+    return raw.hex()
 
 def resolve_case_insensitive(base_path, *parts):
     current = base_path

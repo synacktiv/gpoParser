@@ -14,6 +14,8 @@ class GPO:
         self.raw_computer_registry = ""
         self.raw_user_groups = ""
         self.raw_user_registry = ""
+        self.raw_computer_registry_pol = b""
+        self.raw_user_registry_pol = b""
         self.dn = []
         self.computers = []
         self.content = {
@@ -41,6 +43,8 @@ class GPO:
         gpo.raw_computer_registry = d.get("raw_computer_registry", "")
         gpo.raw_user_groups = d.get("raw_user_groups", "")
         gpo.raw_user_registry = d.get("raw_user_registry", "")
+        gpo.raw_computer_registry_pol = b""
+        gpo.raw_user_registry_pol = b""
         gpo.dn = d.get("dn", [])
         gpo.computers = d.get("computers", [])
         gpo.content = d.get("content", gpo.content)
