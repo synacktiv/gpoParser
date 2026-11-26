@@ -9,7 +9,7 @@ def format_group(args, gpo, sid_cache):
     lines = []
 
     action_map = {
-        "A": "Create",
+        "C": "Create",
         "U": "Update",
         "R": "Replace",
         "D": "Delete"
